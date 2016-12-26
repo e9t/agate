@@ -2,6 +2,7 @@
 # pylint: disable=W0212
 
 import sys
+import unicodedata
 
 from babel.numbers import format_decimal
 import six
@@ -9,6 +10,10 @@ import six
 from agate import config
 from agate.data_types import Number, Text
 from agate import utils
+
+
+def length(string):
+    return len(string) + sum(1 for c in string if unicodedata.east_asian_width(c) == 'W')
 
 
 def print_table(self, max_rows=20, max_columns=6, output=sys.stdout, max_column_width=20, locale=None, max_precision=3):
@@ -56,7 +61,7 @@ def print_table(self, max_rows=20, max_columns=6, output=sys.stdout, max_column_
     columns_truncated = max_columns < len(self._column_names)
     column_names = []
     for column_name in self.column_names[:max_columns]:
-        if max_column_width is not None and len(column_name) > max_column_width:
+        if max_column_width is not None and length(column_name) > max_column_width:
             column_names.append('%s...' % column_name[:max_column_width - 3])
         else:
             column_names.append(column_name)
@@ -64,7 +69,7 @@ def print_table(self, max_rows=20, max_columns=6, output=sys.stdout, max_column_
     if columns_truncated:
         column_names.append(ellipsis)
 
-    widths = [len(n) for n in column_names]
+    widths = [length(n) for n in column_names]
     number_formatters = []
     formatted_data = []
 
@@ -104,11 +109,21 @@ def print_table(self, max_rows=20, max_columns=6, output=sys.stdout, max_column_
             else:
                 v = six.text_type(v)
 
-            if max_column_width is not None and len(v) > max_column_width:
-                v = '%s...' % v[:max_column_width - 3]
+            if max_column_width is not None and length(v) > max_column_width:
+                cum, nchars = 0, 0
+                for i, c in enumerate(v):
+                    if unicodedata.east_asian_width(c) == 'W':
+                        cum += 2
+                    else:
+                        cum += 1
+                    if cum >= max_column_width:
+                        nchars = i
+                        break
 
-            if len(v) > widths[j]:
-                widths[j] = len(v)
+                v = '%s...' % v[:nchars - 3]
+
+            if length(v) > widths[j]:
+                widths[j] = length(v)
 
             formatted_row.append(v)
 
@@ -128,10 +143,11 @@ def print_table(self, max_rows=20, max_columns=6, output=sys.stdout, max_column_
 
         for j, d in enumerate(formatted_row):
             # Text is left-justified, all other values are right-justified
+            pad = ' ' * (widths[j] - length(d))
             if isinstance(self._column_types[j], Text):
-                output = ' %s ' % d.ljust(widths[j])
+                output = ' %s%s ' % (d, pad)
             else:
-                output = ' %s ' % d.rjust(widths[j])
+                output = ' %s%s ' % (pad, d)
 
             row_output.append(output)
 
